@@ -470,6 +470,97 @@ bool DocumentPrivate::savePackage(QIODevice *device) const
     return true;
 }
 
+//
+// j2doll/csv branch
+//
+// Save from XLSX to CSV
+bool DocumentPrivate::saveCsv(QString mainCSVFileName) const
+{
+    Q_Q(const Document);
+
+    int sheetIndexNumber  = 0;
+    const auto sheetNames = q->sheetNames();
+    for (const auto &curretnSheetName : sheetNames) {
+
+        QXlsx::AbstractSheet *currentSheet = q->sheet(curretnSheetName);
+        if (currentSheet == nullptr) {
+            continue;
+        }
+
+        // get full cells of sheet
+        int maxRow = -1;
+        int maxCol = -1;
+
+        currentSheet->workbook()->setActiveSheet(sheetIndexNumber);
+
+        Worksheet *wsheet = static_cast<Worksheet *>(currentSheet->workbook()->activeSheet());
+        if (wsheet == nullptr) {
+            continue;
+        }
+
+        QString strSheetName = wsheet->sheetName(); // sheet name
+
+        QVector<QVector<QString>> cellValues;
+        for (int rc = 0; rc < maxRow; rc++) {
+            QVector<QString> tempValue;
+
+            for (int cc = 0; cc < maxCol; cc++) {
+                tempValue.push_back(QString{});
+            }
+
+            cellValues.push_back(tempValue);
+        }
+
+        const QVector<CellLocation> clList = wsheet->getFullCells(&maxRow, &maxCol);
+        for (const auto &cl : clList) {
+            int row = cl.row - 1;
+            int col = cl.col - 1;
+
+            std::shared_ptr<Cell> ptrCell = cl.cell; // cell pointer
+            QVariant var                  = ptrCell->value();
+            QString str                   = var.toString();
+
+            cellValues[row][col] = str;
+        }
+
+        // TODO:
+        //  (1) save as csv file name (using { mainCSVFileName + strSheetName })
+
+        QString csvFileName = mainCSVFileName + u'_' + strSheetName + QLatin1String(".csv");
+        QFile csvFile(csvFileName);
+        if (!csvFile.open(QIODevice::WriteOnly)) {
+            continue;
+        }
+
+        //  (2) save sheet values
+        //     such as  A,,B,,,,C,,,D,,
+
+        for (int rc = 0; rc < maxRow; rc++) {
+            for (int cc = 0; cc < maxCol; cc++) {
+
+                QString cellData = cellValues[rc][cc];
+
+                if (cellData.size() >= 0) {
+                    csvFile.write(cellData.toUtf8()); // cell data
+                }
+
+                csvFile.write(","); // delimeter
+            }
+
+            csvFile.write("\n"); // CR
+
+            csvFile.flush();
+        }
+
+        // file.flush();
+
+        csvFile.close();
+
+    } // foreach (QString curretnSheetName, q->sheetNames()) ...
+
+    return true;
+}
+
 bool DocumentPrivate::copyStyle(const QString &from, const QString &to)
 {
     // create a temp file because the zip writer cannot modify already existing zips
@@ -1276,6 +1367,13 @@ bool Document::saveAs(QIODevice *device) const
 {
     Q_D(const Document);
     return d->savePackage(device);
+}
+
+bool Document::saveAsCsv(const QString mainCSVFileName) const
+{
+    Q_D(const Document);
+
+    return d->saveCsv(mainCSVFileName);
 }
 
 bool Document::isLoadPackage() const
